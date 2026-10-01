@@ -7,42 +7,43 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #0f172a; color: #f8fafc; padding: 20px; display: flex; gap: 20px; height: 100vh; overflow: hidden; }
+    body { background-color: #0f172a; color: #f8fafc; padding: 15px; display: flex; gap: 15px; height: 100vh; overflow: hidden; }
     
     /* Sol Panel */
-    .left-panel { flex: 1.1; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
-    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 15px; }
-    h2 { font-size: 13px; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .left-panel { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 12px; }
+    h2 { font-size: 12px; color: #38bdf8; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
     
-    .form-group { margin-bottom: 10px; }
-    .form-group label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
-    .form-group input { width: 100%; padding: 8px 10px; background-color: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 4px; outline: none; font-size: 13px; }
-    .form-group input:focus { border-color: #38bdf8; }
-    .form-row { display: flex; gap: 10px; }
+    .form-group { margin-bottom: 8px; }
+    .form-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px; }
+    .form-group input, .form-group select { width: 100%; padding: 7px 9px; background-color: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 4px; outline: none; font-size: 12px; }
+    .form-group input:focus, .form-group select:focus { border-color: #38bdf8; }
+    .form-row { display: flex; gap: 8px; }
 
-    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
-    .stat-item { background-color: #0f172a; padding: 10px; border-radius: 4px; border: 1px solid #334155; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+    .stat-item { background-color: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #334155; }
     .stat-value { font-weight: bold; color: #e2e8f0; }
 
-    .cmd-box { display: flex; gap: 10px; margin-top: 5px; }
-    button { padding: 9px 14px; background-color: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: background 0.2s; }
+    .cmd-box { display: flex; gap: 8px; margin-top: 5px; }
+    button { padding: 8px 12px; background-color: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; transition: background 0.2s; }
     button:hover { background-color: #0369a1; }
-    button.btn-connect { background-color: #16a34a; width: 100%; margin-top: 5px; }
+    button.btn-connect { background-color: #16a34a; width: 100%; margin-top: 4px; }
     button.btn-connect:hover { background-color: #15803d; }
-    button.btn-disconnect { background-color: #475569; width: 100%; margin-top: 5px; }
+    button.btn-disconnect { background-color: #475569; width: 100%; margin-top: 4px; }
     button.btn-disconnect:hover { background-color: #334155; }
-    button.stop-btn { background-color: #dc2626; width: 100%; margin-top: 8px; }
+    button.stop-btn { background-color: #dc2626; width: 100%; margin-top: 6px; }
     button.stop-btn:hover { background-color: #b91c1c; }
 
-    /* Orta Panel - 3D Görünüm */
-    .viewer-panel { flex: 1.5; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
-    .viewer-header { padding: 12px 15px; border-bottom: 1px solid #334155; }
-    iframe { flex: 1; border: none; width: 100%; height: 100%; }
+    /* Sağ Panel (Terminal & Konsol) */
+    .right-panel { flex: 1.8; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; display: flex; flex-direction: column; padding: 12px; overflow: hidden; }
+    #logs { flex: 1; background-color: #020617; border: 1px solid #334155; padding: 10px; overflow-y: auto; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-radius: 4px 4px 0 0; }
+    
+    /* Terminal Yazı Yazma Alanı */
+    .terminal-input-container { display: flex; background-color: #020617; border: 1px solid #334155; border-top: none; border-radius: 0 0 4px 4px; padding: 6px; gap: 8px; }
+    .terminal-input-container input { flex: 1; background-color: #0f172a; border: 1px solid #334155; color: #38bdf8; padding: 8px 10px; font-family: monospace; font-size: 13px; border-radius: 4px; outline: none; }
+    .terminal-input-container input:focus { border-color: #0284c7; }
 
-    /* Sağ Panel - Loglar */
-    .right-panel { flex: 1.2; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; display: flex; flex-direction: column; padding: 15px; overflow: hidden; }
-    #logs { flex: 1; background-color: #020617; border: 1px solid #334155; padding: 10px; overflow-y: auto; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-radius: 4px; margin-top: 10px; }
-    .log-line { margin-bottom: 5px; word-break: break-all; line-height: 1.4; }
+    .log-line { margin-bottom: 4px; word-break: break-all; line-height: 1.3; }
     .log-SYSTEM { color: #38bdf8; }
     .log-AI { color: #c084fc; }
     .log-ACTION { color: #60a5fa; }
@@ -50,17 +51,17 @@
     .log-WARNING { color: #facc15; }
     .log-ERROR { color: #f87171; }
     .log-GAME_CHAT { color: #94a3b8; }
+    .log-TERMINAL_SENT { color: #e0e7ff; font-weight: bold; }
     
-    .status-badge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; margin-right: 5px; }
+    .status-badge { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background-color: #ef4444; margin-left: 5px; }
     .status-badge.online { background-color: #22c55e; }
   </style>
 </head>
 <body>
 
-  <!-- Sol Panel -->
+  <!-- Sol Panel (Ayarlar & Durum) -->
   <div class="left-panel">
     
-    <!-- Sunucu ve API Bağlantı Kartı -->
     <div class="card">
       <h2>Sunucu & API Ayarları</h2>
       <div class="form-group">
@@ -77,6 +78,27 @@
           <input type="text" id="port" value="25565" />
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label>Minecraft Sürümü</label>
+          <select id="version">
+            <option value="auto">Otomatik Tespit</option>
+            <option value="1.20.6">1.20.6</option>
+            <option value="1.20.4">1.20.4</option>
+            <option value="1.20.1">1.20.1</option>
+            <option value="1.19.4">1.19.4</option>
+            <option value="1.18.2">1.18.2</option>
+            <option value="1.16.5">1.16.5</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label>Hesap Modu</label>
+          <select id="auth">
+            <option value="offline">Offline (Korsan/Crack)</option>
+            <option value="microsoft">Microsoft (Orijinal)</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label>Bot Kullanıcı Adı</label>
         <input type="text" id="username" value="DynamicGeminiBot" />
@@ -85,7 +107,6 @@
       <button class="btn-disconnect" onclick="disconnectBot()">Bağlantıyı Kes</button>
     </div>
 
-    <!-- Bot Durumu -->
     <div class="card">
       <h2>Bot Durumu <span id="statusBadge" class="status-badge"></span></h2>
       <div class="stat-grid">
@@ -95,30 +116,27 @@
       </div>
     </div>
 
-    <!-- AI Komut -->
     <div class="card">
-      <h2>AI Komut Merkezi</h2>
+      <h2>AI Komut Alanı</h2>
       <div class="cmd-box">
-        <input type="text" id="cmdInput" placeholder="Örn: En yakın ağacı kes ve bana getir" onkeydown="if(event.key==='Enter') sendCommand()" />
-        <button onclick="sendCommand()">Gönder</button>
+        <input type="text" id="cmdInput" placeholder="Örn: Ağaç kes, maden yap..." onkeydown="if(event.key==='Enter') sendCommand()" />
+        <button onclick="sendCommand()">AI'ya Ver</button>
       </div>
       <button class="stop-btn" onclick="stopBot()">ACİL DURDUR</button>
     </div>
 
   </div>
 
-  <!-- Orta Panel - 3D Görünüm -->
-  <div class="viewer-panel">
-    <div class="viewer-header">
-      <h2>Canlı 3D Görünüm (Prismarine Viewer)</h2>
-    </div>
-    <iframe src="http://localhost:3007"></iframe>
-  </div>
-
-  <!-- Sağ Panel - Konsol Logları -->
+  <!-- Sağ Panel (Konsol ve Doğrudan Terminal Chat) -->
   <div class="right-panel">
-    <h2>Sistem & AI Log Akışı</h2>
+    <h2>CANLI TERMINAL VE OYUN KONSOLU</h2>
     <div id="logs"></div>
+    
+    <!-- Doğrudan Terminal Input Alanı -->
+    <div class="terminal-input-container">
+      <input type="text" id="terminalInput" placeholder="Sunucuya veya Sohbete Komut Gönder (Örn: /login 123456 veya Sa)..." onkeydown="if(event.key==='Enter') sendTerminalChat()" />
+      <button onclick="sendTerminalChat()">Gönder</button>
+    </div>
   </div>
 
   <script>
@@ -129,13 +147,11 @@
         apiKey: document.getElementById('apiKey').value.trim(),
         host: document.getElementById('host').value.trim(),
         port: document.getElementById('port').value.trim(),
+        version: document.getElementById('version').value,
+        auth: document.getElementById('auth').value,
         username: document.getElementById('username').value.trim()
       };
 
-      if (!config.apiKey) {
-        alert("Lütfen Gemini API Key alanını doldurun!");
-        return;
-      }
       if (!config.host) {
         alert("Lütfen Sunucu IP adresini girin!");
         return;
@@ -146,6 +162,27 @@
 
     function disconnectBot() {
       socket.emit('disconnect_bot');
+    }
+
+    // Doğrudan Oyuna Komut/Sohbet Gönderme
+    function sendTerminalChat() {
+      const input = document.getElementById('terminalInput');
+      if (input.value.trim() !== '') {
+        socket.emit('send_terminal_chat', { message: input.value });
+        input.value = '';
+      }
+    }
+
+    function sendCommand() {
+      const input = document.getElementById('cmdInput');
+      if (input.value.trim() !== '') {
+        socket.emit('send_command', { command: input.value });
+        input.value = '';
+      }
+    }
+
+    function stopBot() {
+      socket.emit('stop_all');
     }
 
     socket.on('status_update', (data) => {
@@ -171,18 +208,6 @@
       logsDiv.appendChild(line);
       logsDiv.scrollTop = logsDiv.scrollHeight;
     });
-
-    function sendCommand() {
-      const input = document.getElementById('cmdInput');
-      if (input.value.trim() !== '') {
-        socket.emit('send_command', { command: input.value });
-        input.value = '';
-      }
-    }
-
-    function stopBot() {
-      socket.emit('stop_all');
-    }
   </script>
 </body>
-</html>
+  </html>
