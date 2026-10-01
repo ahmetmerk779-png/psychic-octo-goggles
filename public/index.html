@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft AI Bot Kontrol Paneli</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; padding: 20px; display: flex; gap: 20px; height: 100vh; overflow: hidden; }
+    
+    /* Sol Panel */
+    .left-panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 15px; }
+    h2 { font-size: 14px; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+    .stat-item { background-color: #0f172a; padding: 10px; border-radius: 4px; border: 1px solid #334155; }
+    .stat-value { font-weight: bold; color: #e2e8f0; }
+
+    .cmd-box { display: flex; gap: 10px; margin-top: 10px; }
+    input[type="text"] { flex: 1; padding: 10px; background-color: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 4px; outline: none; }
+    input[type="text"]:focus { border-color: #38bdf8; }
+    button { padding: 10px 15px; background-color: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+    button:hover { background-color: #0369a1; }
+    button.stop-btn { background-color: #dc2626; width: 100%; margin-top: 10px; }
+    button.stop-btn:hover { background-color: #b91c1c; }
+
+    /* Orta Panel - 3D Canlı Görünüm */
+    .viewer-panel { flex: 1.5; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
+    .viewer-header { padding: 15px; border-bottom: 1px solid #334155; }
+    iframe { flex: 1; border: none; width: 100%; height: 100%; }
+
+    /* Sağ Panel - Konsol Logları */
+    .right-panel { flex: 1.2; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; display: flex; flex-direction: column; padding: 15px; overflow: hidden; }
+    #logs { flex: 1; background-color: #020617; border: 1px solid #334155; padding: 10px; overflow-y: auto; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-radius: 4px; margin-top: 10px; }
+    .log-line { margin-bottom: 6px; word-break: break-all; line-height: 1.4; }
+    .log-SYSTEM { color: #38bdf8; }
+    .log-AI { color: #c084fc; }
+    .log-ACTION { color: #60a5fa; }
+    .log-SUCCESS { color: #4ade80; }
+    .log-WARNING { color: #facc15; }
+    .log-ERROR { color: #f87171; }
+    .log-GAME_CHAT { color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <!-- Sol Panel -->
+  <div class="left-panel">
+    <div class="card">
+      <h2>Bot Durumu</h2>
+      <div class="stat-grid">
+        <div class="stat-item">Can: <span id="health" class="stat-value">-</span>/20</div>
+        <div class="stat-item">Açlık: <span id="food" class="stat-value">-</span>/20</div>
+        <div class="stat-item" style="grid-column: span 2;">Konum: <span id="pos" class="stat-value">X: - Y: - Z: -</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>AI Komut Panel</h2>
+      <div class="cmd-box">
+        <input type="text" id="cmdInput" placeholder="Örn: 10 tane odun topla ve bana getir" onkeydown="if(event.key==='Enter') sendCommand()" />
+        <button onclick="sendCommand()">Gönder</button>
+      </div>
+      <button class="stop-btn" onclick="stopBot()">ACİL DURDUR</button>
+    </div>
+  </div>
+
+  <!-- Orta Panel - 3D Görünüm -->
+  <div class="viewer-panel">
+    <div class="viewer-header">
+      <h2>Canlı 3D Görünüm (Prismarine Viewer)</h2>
+    </div>
+    <iframe src="http://localhost:3007"></iframe>
+  </div>
+
+  <!-- Sağ Panel - Konsol Logları -->
+  <div class="right-panel">
+    <h2>Sistem & AI Log Akışı</h2>
+    <div id="logs"></div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    socket.on('status_update', (data) => {
+      document.getElementById('health').innerText = data.health;
+      document.getElementById('food').innerText = data.food;
+      document.getElementById('pos').innerText = `X: ${data.position.x} | Y: ${data.position.y} | Z: ${data.position.z}`;
+    });
+
+    socket.on('bot_log', (data) => {
+      const logsDiv = document.getElementById('logs');
+      const line = document.createElement('div');
+      line.className = `log-line log-${data.type}`;
+      line.innerText = `[${data.timestamp}] [${data.type}] ${data.message}`;
+      logsDiv.appendChild(line);
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+    });
+
+    function sendCommand() {
+      const input = document.getElementById('cmdInput');
+      if (input.value.trim() !== '') {
+        socket.emit('send_command', { command: input.value });
+        input.value = '';
+      }
+    }
+
+    function stopBot() {
+      socket.emit('stop_all');
+    }
+  </script>
+</body>
+  </html>
