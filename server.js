@@ -5,7 +5,6 @@ const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { plugin: collectBlock } = require('mineflayer-collectblock');
 const autoEat = require('mineflayer-auto-eat').plugin;
-const { mineflayer: prismarineViewer } = require('prismarine-viewer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const fs = require('fs');
@@ -22,7 +21,7 @@ app.use(express.static('public'));
 let bot = null;
 let mcData = null;
 let model = null;
-let currentConfig = null; // Panelden gelen ayarlar burada tutulur
+let currentConfig = null;
 
 // --- Hafıza Yönetimi ---
 function loadMemory() {
@@ -73,33 +72,42 @@ function broadcastStatus() {
   io.emit('status_update', status);
 }
 
-// --- Panelden Gelen Konfigürasyon ile Botu Başlatma ---
+// --- Bot Başlatma Mimarisi ---
 function initBot(config) {
   if (bot) {
-    logToDashboard('SYSTEM', 'Mevcut bağlantı kapatılıyor...');
-    bot.quit();
+    logToDashboard('SYSTEM', 'Mevcut bağlantı sonlandırılıyor...');
+    try { bot.quit(); } catch(e) {}
     bot = null;
   }
 
   currentConfig = config;
 
-  // Gemini AI Modelini Panellerden Gelen API Key ile Başlat
-  try {
-    const genAI = new GoogleGenerativeAI(config.apiKey);
-    model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  } catch (e) {
-    logToDashboard('ERROR', `Gemini API Başlatılamadı: ${e.message}`);
-    return;
+  if (config.apiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(config.apiKey);
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    } catch (e) {
+      logToDashboard('ERROR', `Gemini API Başlatılamadı: ${e.message}`);
+    }
   }
 
-  logToDashboard('SYSTEM', `${config.host}:${config.port} sunucusuna (${config.username}) olarak bağlanılıyor...`);
+  const mcVersion = (config.version && config.version !== 'auto') ? config.version.trim() : false;
+  const authMode = config.auth || 'offline';
 
-  bot = mineflayer.createBot({
-    host: config.host,
-    port: parseInt(config.port) || 25565,
-    username: config.username || "DynamicBot",
-    version: false
-  });
+  logToDashboard('SYSTEM', `${config.host}:${config.port} sunucusuna (${config.username}) bağlanılıyor... [Sürüm: ${mcVersion || 'Otomatik'}, Mod: ${authMode}]`);
+
+  try {
+    bot = mineflayer.createBot({
+      host: config.host,
+      port: parseInt(config.port) || 25565,
+      username: config.username || "DynamicBot",
+      version: mcVersion,
+      auth: authMode
+    });
+  } catch (err) {
+    logToDashboard('ERROR', `Bot oluşturma hatası: ${err.message}`);
+    return;
+  }
 
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(collectBlock);
@@ -111,24 +119,15 @@ function initBot(config) {
     defaultMove.canDig = true;
     bot.pathfinder.setMovements(defaultMove);
 
-    // 3D Ekran Görünümü
-    try {
-      prismarineViewer(bot, { port: 3007, firstPerson: true });
-      logToDashboard('SYSTEM', 'Canlı 3D Görünüm aktif (Port 3007).');
-    } catch (e) {
-      logToDashboard('WARNING', `3D Ekran hatası: ${e.message}`);
-    }
-
     bot.autoEat.options = {
       priority: 'foodPoints',
       startAt: 14,
       bannedFood: ['rotten_flesh', 'poisonous_potato', 'pufferfish']
     };
 
-    logToDashboard('SYSTEM', `${bot.username} sunucuya başarıyla bağlandı!`);
+    logToDashboard('SYSTEM', `${bot.username} sunucuya başarıyla girdi! (Minecraft v${bot.version})`);
   });
 
-  // Otomatik Öz Savunma
   bot.on('entityHurt', (entity) => {
     if (entity !== bot.entity) return;
     const attacker = bot.nearestEntity(e => (e.type === 'mob' || e.type === 'player') && e.position.distanceTo(bot.entity.position) < 5);
@@ -143,16 +142,15 @@ function initBot(config) {
   });
 
   bot.on('kicked', (reason) => {
-    logToDashboard('WARNING', `Sunucudan atıldı: ${reason}. 10 saniye sonra tekrar bağlanılacak...`);
-    setTimeout(() => { if (currentConfig) initBot(currentConfig); }, 10000);
+    logToDashboard('WARNING', `Sunucudan atıldı: ${reason}`);
   });
 
   bot.on('error', (err) => {
-    logToDashboard('ERROR', `Bağlantı hatası: ${err.message}`);
+    logToDashboard('ERROR', `Sunucu Bağlantı Hatası: ${err.message}`);
   });
 
-  bot.on('end', () => {
-    logToDashboard('WARNING', 'Bağlantı koptu.');
+  bot.on('end', (reason) => {
+    logToDashboard('WARNING', `Bağlantı koptu. (${reason || 'Bilinmeyen sebep'})`);
   });
 
   bot.on('chat', (username, message) => {
@@ -187,7 +185,7 @@ function getEnvironmentContext() {
 // --- Self-Correction AI Döngüsü ---
 async function processRequestWithSelfCorrection(userMessage, sender, retries = 3) {
   if (!model) {
-    logToDashboard('ERROR', 'Gemini API henüz yapılandırılmadı!');
+    logToDashboard('ERROR', 'Gemini API Key girilmediği için AI isteği işlenemedi.');
     return;
   }
 
@@ -230,7 +228,7 @@ SADECE GEÇERLİ JSON DÖNDÜR:
 `;
 
     try {
-      logToDashboard('AI', `Kod Üretiyor (Deneme ${attempt}/${retries})...`);
+      logToDashboard('AI', `Kod Üretiliyor (Deneme ${attempt}/${retries})...`);
       const result = await model.generateContent(systemPrompt);
       const cleanJson = result.response.text().replace(/```json|```/g, '').trim();
       const decision = JSON.parse(cleanJson);
@@ -260,23 +258,31 @@ SADECE GEÇERLİ JSON DÖNDÜR:
   }
 }
 
-// --- Socket.IO Event Bağlantıları ---
+// --- Socket.IO Event Dinleyicileri ---
 setInterval(broadcastStatus, 2000);
 
 io.on('connection', (socket) => {
-  // Panelden Sunucu Bilgileri Geldiğinde
   socket.on('start_bot', (config) => {
-    logToDashboard('SYSTEM', 'Panelden yeni bağlantı isteği alındı.');
+    logToDashboard('SYSTEM', 'Yeni bağlantı isteği alındı.');
     initBot(config);
   });
 
-  // Panelden Bağlantıyı Kes İsteği
   socket.on('disconnect_bot', () => {
     if (bot) {
       bot.quit();
       bot = null;
       currentConfig = null;
-      logToDashboard('SYSTEM', 'Bot bağlantısı panel üzerinden kapatıldı.');
+      logToDashboard('SYSTEM', 'Bot sunucudan çıkarıldı.');
+    }
+  });
+
+  // Terminalden Oyuna / Sunucuya Doğrudan Komut veya Mesaj Gönderme
+  socket.on('send_terminal_chat', (data) => {
+    if (bot && data.message) {
+      bot.chat(data.message);
+      logToDashboard('TERMINAL_SENT', `[SİZ] ${data.message}`);
+    } else {
+      logToDashboard('ERROR', 'Bot sunucuda aktif değil, mesaj gönderilemedi.');
     }
   });
 
@@ -290,5 +296,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`=== Dashboard Aktif: http://localhost:${PORT} ===`);
+  console.log(`=== Dashboard Çalışıyor: http://localhost:${PORT} ===`);
 });
