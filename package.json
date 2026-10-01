@@ -9,14 +9,12 @@
   "dependencies": {
     "@google/generative-ai": "^0.14.0",
     "axios": "^1.7.2",
-    "canvas": "^2.11.2",
     "express": "^4.19.2",
     "mineflayer": "^4.20.1",
     "mineflayer-auto-eat": "latest",
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
     "minecraft-data": "^3.60.0",
-    "prismarine-viewer": "^1.29.0",
     "socket.io": "^4.7.5"
   }
 }
