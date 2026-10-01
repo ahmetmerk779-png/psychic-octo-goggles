@@ -9,6 +9,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.14.0",
     "axios": "^1.7.2",
+    "canvas": "^2.11.2",
     "express": "^4.19.2",
     "mineflayer": "^4.20.1",
     "mineflayer-auto-eat": "latest",
