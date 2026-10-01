@@ -11,12 +11,6 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-// --- Yapılandırma ---
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
-const SERVER_HOST = process.env.MC_HOST || "localhost";
-const SERVER_PORT = parseInt(process.env.MC_PORT || "25565");
-const BOT_NAME = process.env.BOT_NAME || "DynamicGeminiBot";
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK || "";
 const MEMORY_FILE = path.join(__dirname, 'bot_memory.json');
 
 const app = express();
@@ -25,22 +19,18 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
 let bot = null;
 let mcData = null;
+let model = null;
+let currentConfig = null; // Panelden gelen ayarlar burada tutulur
 
 // --- Hafıza Yönetimi ---
 function loadMemory() {
   if (!fs.existsSync(MEMORY_FILE)) {
     fs.writeFileSync(MEMORY_FILE, JSON.stringify({ basePosition: null, waypoints: {}, playerRelations: {} }, null, 2));
   }
-  try {
-    return JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
-  } catch (e) {
-    return { basePosition: null, waypoints: {}, playerRelations: {} };
-  }
+  try { return JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')); } 
+  catch (e) { return { basePosition: null, waypoints: {}, playerRelations: {} }; }
 }
 
 function saveMemory(data) {
@@ -54,21 +44,23 @@ function updateMemoryKey(key, value) {
   logToDashboard('MEMORY', `Hafıza güncellendi: ${key}`);
 }
 
-// --- Dashboard & Discord Loglama ---
+// --- Dashboard & Loglama ---
 function logToDashboard(type, message) {
   console.log(`[${type}] ${message}`);
   io.emit('bot_log', { type, message, timestamp: new Date().toLocaleTimeString() });
 
-  if (DISCORD_WEBHOOK_URL && ['ERROR', 'WARNING', 'SYSTEM'].includes(type)) {
-    axios.post(DISCORD_WEBHOOK_URL, {
-      content: `**[${type}]** ${message}`
-    }).catch(() => {});
+  if (currentConfig && currentConfig.discordWebhook && ['ERROR', 'WARNING', 'SYSTEM'].includes(type)) {
+    axios.post(currentConfig.discordWebhook, { content: `**[${type}]** ${message}` }).catch(() => {});
   }
 }
 
 function broadcastStatus() {
-  if (!bot || !bot.entity) return;
+  if (!bot || !bot.entity) {
+    io.emit('status_update', { connected: false });
+    return;
+  }
   const status = {
+    connected: true,
     health: bot.health,
     food: bot.food,
     position: {
@@ -81,14 +73,31 @@ function broadcastStatus() {
   io.emit('status_update', status);
 }
 
-// --- Bot Başlatma Mimarisi ---
-function initBot() {
-  logToDashboard('SYSTEM', 'Sunucuya bağlanılıyor...');
-  
+// --- Panelden Gelen Konfigürasyon ile Botu Başlatma ---
+function initBot(config) {
+  if (bot) {
+    logToDashboard('SYSTEM', 'Mevcut bağlantı kapatılıyor...');
+    bot.quit();
+    bot = null;
+  }
+
+  currentConfig = config;
+
+  // Gemini AI Modelini Panellerden Gelen API Key ile Başlat
+  try {
+    const genAI = new GoogleGenerativeAI(config.apiKey);
+    model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  } catch (e) {
+    logToDashboard('ERROR', `Gemini API Başlatılamadı: ${e.message}`);
+    return;
+  }
+
+  logToDashboard('SYSTEM', `${config.host}:${config.port} sunucusuna (${config.username}) olarak bağlanılıyor...`);
+
   bot = mineflayer.createBot({
-    host: SERVER_HOST,
-    port: SERVER_PORT,
-    username: BOT_NAME,
+    host: config.host,
+    port: parseInt(config.port) || 25565,
+    username: config.username || "DynamicBot",
     version: false
   });
 
@@ -102,22 +111,21 @@ function initBot() {
     defaultMove.canDig = true;
     bot.pathfinder.setMovements(defaultMove);
 
-    // 3D Ekran Görünümü (Port: 3007)
+    // 3D Ekran Görünümü
     try {
       prismarineViewer(bot, { port: 3007, firstPerson: true });
-      logToDashboard('SYSTEM', 'Canlı 3D Görünüm Port 3007 üzerinde aktif.');
+      logToDashboard('SYSTEM', 'Canlı 3D Görünüm aktif (Port 3007).');
     } catch (e) {
-      logToDashboard('WARNING', `3D Ekran başlatılamadı: ${e.message}`);
+      logToDashboard('WARNING', `3D Ekran hatası: ${e.message}`);
     }
 
-    // Otomatik Yemek Yeme Yapılandırması
     bot.autoEat.options = {
       priority: 'foodPoints',
       startAt: 14,
       bannedFood: ['rotten_flesh', 'poisonous_potato', 'pufferfish']
     };
 
-    logToDashboard('SYSTEM', `${bot.username} sunucuya başarıyla girdi.`);
+    logToDashboard('SYSTEM', `${bot.username} sunucuya başarıyla bağlandı!`);
   });
 
   // Otomatik Öz Savunma
@@ -129,17 +137,14 @@ function initBot() {
       logToDashboard('WARNING', `Saldırı tespit edildi! Hedef: ${attacker.name || attacker.username}`);
       const sword = bot.inventory.items().find(item => item.name.includes('sword'));
       if (sword) bot.equip(sword, 'hand');
-      if (bot.pvp) {
-        bot.pvp.attack(attacker);
-      } else {
-        bot.attack(attacker);
-      }
+      if (bot.pvp) bot.pvp.attack(attacker);
+      else bot.attack(attacker);
     }
   });
 
   bot.on('kicked', (reason) => {
     logToDashboard('WARNING', `Sunucudan atıldı: ${reason}. 10 saniye sonra tekrar bağlanılacak...`);
-    setTimeout(initBot, 10000);
+    setTimeout(() => { if (currentConfig) initBot(currentConfig); }, 10000);
   });
 
   bot.on('error', (err) => {
@@ -147,8 +152,7 @@ function initBot() {
   });
 
   bot.on('end', () => {
-    logToDashboard('WARNING', 'Bağlantı koptu. 5 saniye sonra tekrar bağlanılıyor...');
-    setTimeout(initBot, 5000);
+    logToDashboard('WARNING', 'Bağlantı koptu.');
   });
 
   bot.on('chat', (username, message) => {
@@ -182,7 +186,12 @@ function getEnvironmentContext() {
 
 // --- Self-Correction AI Döngüsü ---
 async function processRequestWithSelfCorrection(userMessage, sender, retries = 3) {
-  logToDashboard('AI', `Gelen İstek [${sender}]: "${userMessage}"`);
+  if (!model) {
+    logToDashboard('ERROR', 'Gemini API henüz yapılandırılmadı!');
+    return;
+  }
+
+  logToDashboard('AI', `Gelen Komut [${sender}]: "${userMessage}"`);
 
   let lastError = null;
   let previousCode = null;
@@ -192,97 +201,94 @@ async function processRequestWithSelfCorrection(userMessage, sender, retries = 3
 
     const systemPrompt = `
 Sen Mineflayer altyapısında çalışan otonom bir Minecraft botusun.
-Sana verilen isteği gerçekleştirmek için GERÇEK Node.js / Mineflayer KODU üret.
+Sana verilen isteği gerçekleştirmek için Node.js / Mineflayer KODU üret.
 
-ANLIK DURUM:
+DURUM:
 - Konum: X:${env.position.x}, Y:${env.position.y}, Z:${env.position.z}
 - Can: ${env.health}/20, Açlık: ${env.food}/20
 - Envanter: ${env.inventory}
 - Kalıcı Hafıza: ${env.memoryContext}
 
-KULLANILABİLİR DEĞİŞKENLER:
-- \`bot\`: Mineflayer bot örneği.
-- \`mcData\`: minecraft-data nesnesi.
-- \`goals\`: mineflayer-pathfinder goals.
-- \`updateMemoryKey(key, value)\`: Hafızaya veri kaydetme fonksiyonu.
-- \`logToDashboard(type, msg)\`: Log basma fonksiyonu.
+DEĞİŞKENLER: \`bot\`, \`mcData\`, \`goals\`, \`updateMemoryKey\`, \`logToDashboard\`
 
 ${lastError ? `
- ÖNEMLİ (HATA DÜZELTME MODU):
-Önceki denemede ürettiğin kod HATA verdi!
-Hatalı Kod:
+[HATA DÜZELTME MODU]
+Önceki Kod:
 \`\`\`javascript
 ${previousCode}
 \`\`\`
-Hata Mesajı:
-"${lastError}"
-
-Lütfen hatayı analiz et ve bu hatayı giderecek DÜZELTİLMİŞ yeni kodu üret.
+Hata: "${lastError}"
+Lütfen bu hatayı çözen DÜZELTİLMİŞ yeni kodu üret.
 ` : ''}
 
 SADECE GEÇERLİ JSON DÖNDÜR:
 {
-  "thought": "Yapılacak mantıksal plan",
-  "chatReply": "Oyuncuya verilecek kısa bilgi yanıtı",
+  "thought": "Düşünce planı",
+  "chatReply": "Oyuncuya kısa yanıt",
   "code": "async (bot, mcData, goals, updateMemoryKey, logToDashboard) => { ... }"
 }
 `;
 
     try {
-      logToDashboard('AI', `AI Kod Üretiyor (Deneme ${attempt}/${retries})...`);
+      logToDashboard('AI', `Kod Üretiyor (Deneme ${attempt}/${retries})...`);
       const result = await model.generateContent(systemPrompt);
-      const responseText = result.response.text().trim();
-      const cleanJson = responseText.replace(/```json|```/g, '').trim();
+      const cleanJson = result.response.text().replace(/```json|```/g, '').trim();
       const decision = JSON.parse(cleanJson);
 
-      if (attempt === 1 && decision.chatReply) {
+      if (attempt === 1 && decision.chatReply && bot) {
         bot.chat(decision.chatReply);
         logToDashboard('BOT_CHAT', decision.chatReply);
       }
 
-      if (decision.thought) {
-        logToDashboard('AI_THOUGHT', decision.thought);
-      }
-
-      if (decision.code) {
+      if (decision.code && bot) {
         previousCode = decision.code;
-        logToDashboard('ACTION', 'Kod çalıştırılıyor...');
-
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
         const dynamicFn = new AsyncFunction('bot', 'mcData', 'goals', 'updateMemoryKey', 'logToDashboard', decision.code);
 
         await dynamicFn(bot, mcData, goals, updateMemoryKey, logToDashboard);
-        logToDashboard('SUCCESS', 'Görev başarıyla tamamlandı.');
-        return;
-      } else {
+        logToDashboard('SUCCESS', 'Görev tamamlandı.');
         return;
       }
-
     } catch (err) {
       lastError = err.message;
       logToDashboard('WARNING', `Deneme ${attempt} Hatası: ${err.message}`);
-      
       if (attempt === retries) {
-        logToDashboard('ERROR', 'Maksimum deneme sayısına ulaşıldı. Görev iptal edildi.');
-        if (bot) bot.chat("Üzgünüm, bu görevi kod hatası nedeniyle tamamlayamadım.");
+        logToDashboard('ERROR', 'Kod hatası giderilemedi.');
+        if (bot) bot.chat("Görevi kod hatası nedeniyle tamamlayamadım.");
       }
     }
   }
 }
 
-// --- Sunucu ve Socket.IO Başlatma ---
+// --- Socket.IO Event Bağlantıları ---
 setInterval(broadcastStatus, 2000);
 
 io.on('connection', (socket) => {
+  // Panelden Sunucu Bilgileri Geldiğinde
+  socket.on('start_bot', (config) => {
+    logToDashboard('SYSTEM', 'Panelden yeni bağlantı isteği alındı.');
+    initBot(config);
+  });
+
+  // Panelden Bağlantıyı Kes İsteği
+  socket.on('disconnect_bot', () => {
+    if (bot) {
+      bot.quit();
+      bot = null;
+      currentConfig = null;
+      logToDashboard('SYSTEM', 'Bot bağlantısı panel üzerinden kapatıldı.');
+    }
+  });
+
   socket.on('send_command', (data) => processRequestWithSelfCorrection(data.command, 'DashboardUser'));
+  
   socket.on('stop_all', () => {
-    if (bot) bot.pathfinder.setGoal(null);
-    logToDashboard('SYSTEM', 'Tüm hedefler durduruldu.');
+    if (bot && bot.pathfinder) bot.pathfinder.setGoal(null);
+    logToDashboard('SYSTEM', 'Tüm hareketler durduruldu.');
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`=== Dashboard Aktif: http://localhost:${PORT} ===`);
-  initBot();
 });
